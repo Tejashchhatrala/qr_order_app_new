@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.2
+  geolocator: ^10.0.0
+  flutter_local_notifications: ^15.1.0+1
   
   # Firebase
   firebase_core: ^2.15.1

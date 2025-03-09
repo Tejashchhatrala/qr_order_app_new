@@ -66,6 +66,5 @@ class NotificationService {
 }
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Handle background messages
   print('Handling background message: ${message.messageId}');
 }

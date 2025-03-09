@@ -23,7 +23,6 @@ class CustomerHomeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Scan QR Card
             Card(
               child: InkWell(
                 onTap: () {
@@ -58,8 +57,6 @@ class CustomerHomeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Nearby Vendors Card
             Card(
               child: InkWell(
                 onTap: () {
