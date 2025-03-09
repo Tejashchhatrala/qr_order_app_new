@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "121541416852",
+    "project_id": "qr-order-app",
+    "storage_bucket": "qr-order-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:121541416852:android:84ddd7b5b294bdf225a181",
+        "android_client_info": {
+          "package_name": "com.example.qr_order_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyArKVxZh_9aGCi_AHiP8WZPWYW5zubpQ_E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
