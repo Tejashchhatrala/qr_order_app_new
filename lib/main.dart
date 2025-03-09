@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/auth/phone_auth_screen.dart';
 import 'screens/customer/customer_home_screen.dart';
-import 'screens/vendor/vendor_home_screen.dart';
+import 'screens/vendor/dashboard/vendor_dashboard.dart';
 import 'models/user_type.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'services/notification_service.dart'; // Add this import
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  await NotificationService().initialize();
+  await NotificationService().initialize(); // This should work now
   runApp(const MyApp());
 }
 
@@ -29,14 +30,13 @@ class MyApp extends StatelessWidget {
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const CircularProgressIndicator();
+            return const Center(child: CircularProgressIndicator());
           }
 
           if (!snapshot.hasData) {
             return const PhoneAuthScreen();
           }
 
-          // Check user type in Firestore
           return FutureBuilder<DocumentSnapshot>(
             future: FirebaseFirestore.instance
                 .collection('users')
@@ -44,7 +44,7 @@ class MyApp extends StatelessWidget {
                 .get(),
             builder: (context, userSnapshot) {
               if (userSnapshot.connectionState == ConnectionState.waiting) {
-                return const CircularProgressIndicator();
+                return const Center(child: CircularProgressIndicator());
               }
 
               if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
@@ -59,7 +59,7 @@ class MyApp extends StatelessWidget {
                       : UserType.customer;
 
               return userType == UserType.vendor
-                  ? const VendorHomeScreen()
+                  ? const VendorDashboard()
                   : const CustomerHomeScreen();
             },
           );
