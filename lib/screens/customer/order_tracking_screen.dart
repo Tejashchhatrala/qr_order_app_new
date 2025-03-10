@@ -1,280 +1,90 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
+import '../../models/order.dart';
+import '../../services/order_service.dart';
 
 class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
+  final _orderService = OrderService();
 
-  const OrderTrackingScreen({
-    super.key,
-    required this.orderId,
-  });
+  OrderTrackingScreen({super.key, required this.orderId});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Order Status'),
-      ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('orders')
-            .doc(orderId)
-            .snapshots(),
+      appBar: AppBar(title: const Text('Track Order')),
+      body: StreamBuilder<Order>(
+        stream: _orderService.getOrderStream(orderId),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(
-              child: Text('Error: ${snapshot.error}'),
-            );
+            return Center(child: Text('Error: ${snapshot.error}'));
           }
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
           }
 
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(
-              child: Text('Order not found'),
-            );
-          }
-
-          final orderData = snapshot.data!.data() as Map<String, dynamic>;
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Order Status Card
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Order #${orderId.substring(0, 8)}',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            _StatusChip(status: orderData['status']),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Placed on ${DateFormat('MMM d, h:mm a').format((orderData['createdAt'] as Timestamp).toDate())}',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Order Progress
-                const Text(
-                  'Order Progress',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _OrderProgressStepper(status: orderData['status']),
-                const SizedBox(height: 24),
-
-                // Order Items
-                const Text(
-                  'Order Details',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Card(
-                  child: Column(
-                    children: [
-                      // Items list
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: (orderData['items'] as List).length,
-                        itemBuilder: (context, index) {
-                          final item = orderData['items'][index];
-                          return ListTile(
-                            title: Text(item['name']),
-                            subtitle: Text('₹${item['price']} × ${item['quantity']}'),
-                            trailing: Text(
-                              '₹${(item['price'] * item['quantity']).toStringAsFixed(2)}',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          );
-                        },
-                      ),
-                      const Divider(),
-                      // Total amount
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Total Amount',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              '₹${orderData['total']}',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Order Note (if any)
-                if (orderData['note'] != null && orderData['note'].isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Note',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(orderData['note']),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+          final order = snapshot.data!;
+          return Column(
+            children: [
+              _buildStatusTimeline(order.status),
+              const Divider(),
+              _buildOrderDetails(order),
+            ],
           );
         },
       ),
     );
   }
-}
 
-class _StatusChip extends StatelessWidget {
-  final String status;
-
-  const _StatusChip({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    Color color;
-    switch (status.toLowerCase()) {
-      case 'pending':
-        color = Colors.orange;
-        break;
-      case 'processing':
-        color = Colors.blue;
-        break;
-      case 'ready':
-        color = Colors.green;
-        break;
-      case 'completed':
-        color = Colors.grey;
-        break;
-      default:
-        color = Colors.grey;
-    }
-
-    return Chip(
-      label: Text(
-        status,
-        style: const TextStyle(color: Colors.white),
+  Widget _buildStatusTimeline(OrderStatus status) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: OrderStatus.values
+            .where((s) => s != OrderStatus.cancelled)
+            .map((s) => _buildStatusStep(s, status))
+            .toList(),
       ),
-      backgroundColor: color,
     );
   }
-}
 
-class _OrderProgressStepper extends StatelessWidget {
-  final String status;
+  Widget _buildStatusStep(OrderStatus step, OrderStatus currentStatus) {
+    final isCompleted = currentStatus.index >= step.index;
+    final isCurrent = currentStatus == step;
 
-  const _OrderProgressStepper({required this.status});
-
-  int get _currentStep {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return 0;
-      case 'processing':
-        return 1;
-      case 'ready':
-        return 2;
-      case 'completed':
-        return 3;
-      default:
-        return 0;
-    }
+    return ListTile(
+      leading: Icon(
+        isCompleted ? Icons.check_circle : Icons.circle_outlined,
+        color: isCompleted ? Colors.green : Colors.grey,
+      ),
+      title: Text(
+        step.toString().split('.').last,
+        style: TextStyle(
+          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Stepper(
-      currentStep: _currentStep,
-      controlsBuilder: (context, details) => Container(), // Hide default buttons
-      steps: [
-        Step(
-          title: const Text('Order Placed'),
-          content: Text(
-            'Your order has been placed and is awaiting confirmation',
-            style: TextStyle(color: Colors.grey[600]),
+  Widget _buildOrderDetails(Order order) {
+    return Expanded(
+      child: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          Text('Order #${order.id}'),
+          const SizedBox(height: 8),
+          ...order.items.map((item) => ListTile(
+                title: Text(item.name),
+                trailing: Text('${item.quantity}x ₹${item.price}'),
+              )),
+          const Divider(),
+          ListTile(
+            title: const Text('Total'),
+            trailing: Text('₹${order.total}'),
           ),
-          isActive: true,
-          state: _currentStep >= 0 ? StepState.complete : StepState.indexed,
-        ),
-        Step(
-          title: const Text('Processing'),
-          content: Text(
-            'Vendor is preparing your order',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-          isActive: _currentStep >= 1,
-          state: _currentStep >= 1 ? StepState.complete : StepState.indexed,
-        ),
-        Step(
-          title: const Text('Ready'),
-          content: Text(
-            'Your order is ready',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-          isActive: _currentStep >= 2,
-          state: _currentStep >= 2 ? StepState.complete : StepState.indexed,
-        ),
-        Step(
-          title: const Text('Completed'),
-          content: Text(
-            'Order has been completed',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-          isActive: _currentStep >= 3,
-          state: _currentStep >= 3 ? StepState.complete : StepState.indexed,
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

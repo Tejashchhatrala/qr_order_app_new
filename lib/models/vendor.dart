@@ -2,18 +2,26 @@ class Vendor {
   final String id;
   final String name;
   final String upiId;
-  final String phone;
   final String address;
-  final List<Category> categories;
+  final Map<String, dynamic> menu;
 
   Vendor({
     required this.id,
     required this.name,
     required this.upiId,
-    required this.phone,
     required this.address,
-    required this.categories,
+    required this.menu,
   });
+
+  factory Vendor.fromMap(Map<String, dynamic> map) {
+    return Vendor(
+      id: map['id'],
+      name: map['name'],
+      upiId: map['upiId'],
+      address: map['address'],
+      menu: Map<String, dynamic>.from(map['menu']),
+    );
+  }
 }
 
 class Category {
@@ -35,7 +43,7 @@ class Product {
   final String description;
   final String? imageUrl;
   bool isAvailable;
-  
+
   Product({
     required this.id,
     required this.name,

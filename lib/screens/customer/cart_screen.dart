@@ -1,312 +1,131 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'order_tracking_screen.dart';
+import 'package:provider/provider.dart';
+import '../../providers/cart_provider.dart';
+import '../../services/payment_service.dart';
+import '../../services/order_service.dart';
+import '../../services/connectivity_service.dart';
+import '../../widgets/connectivity_banner.dart';
 
-class CartScreen extends StatefulWidget {
-  final List<Map<String, dynamic>> cart;
-  final String vendorId;
-  final Map<String, dynamic> vendorData;
-
-  const CartScreen({
-    super.key,
-    required this.cart,
-    required this.vendorId,
-    required this.vendorData,
-  });
-
-  @override
-  State<CartScreen> createState() => _CartScreenState();
-}
-
-class _CartScreenState extends State<CartScreen> {
-  bool _isProcessing = false;
-  final _noteController = TextEditingController();
-
-  double get _subtotal {
-    return widget.cart.fold(0, (total, item) {
-      return total + (item['price'] * item['quantity']);
-    });
-  }
-
-  void _updateQuantity(int index, int quantity) {
-    setState(() {
-      if (quantity == 0) {
-        widget.cart.removeAt(index);
-      } else {
-        widget.cart[index]['quantity'] = quantity;
-      }
-    });
-  }
-
-  Future<void> _placeOrder() async {
-    if (_isProcessing) return;
-
-    setState(() => _isProcessing = true);
-
-    try {
-      // Create order in Firestore
-      final orderRef = await FirebaseFirestore.instance.collection('orders').add({
-        'vendorId': widget.vendorId,
-        'customerId': FirebaseAuth.instance.currentUser!.uid,
-        'customerName': FirebaseAuth.instance.currentUser!.displayName,
-        'items': widget.cart.map((item) => {
-          'id': item['id'],
-          'name': item['name'],
-          'price': item['price'],
-          'quantity': item['quantity'],
-          'category': item['category'],
-        }).toList(),
-        'subtotal': _subtotal,
-        'total': _subtotal, // Add taxes/fees here if needed
-        'note': _noteController.text.trim(),
-        'status': 'Pending',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      // Generate UPI payment URL
-      final upiUrl = _generateUPIUrl(orderRef.id);
-
-      // Launch UPI payment
-      if (await canLaunchUrl(Uri.parse(upiUrl))) {
-        await launchUrl(Uri.parse(upiUrl));
-        
-        if (mounted) {
-          // Navigate to order tracking
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => OrderTrackingScreen(orderId: orderRef.id),
-            ),
-          );
-        }
-      } else {
-        throw 'Could not launch payment app';
-      }
-    } catch (e) {
-      setState(() => _isProcessing = false);
-      _showError('Error placing order: $e');
-    }
-  }
-
-  String _generateUPIUrl(String orderId) {
-    final upiId = widget.vendorData['upiId'];
-    final amount = _subtotal.toString();
-    final name = widget.vendorData['businessName'];
-    final note = 'Order #${orderId.substring(0, 8)}';
-
-    return 'upi://pay?pa=$upiId&pn=$name&tn=$note&am=$amount&cu=INR';
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
-  @override
-  void dispose() {
-    _noteController.dispose();
-    super.dispose();
-  }
+class CartScreen extends StatelessWidget {
+  const CartScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final cart = context.watch<CartProvider>().cart;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Cart'),
-      ),
-      body: widget.cart.isEmpty
-          ? const Center(
-              child: Text('Your cart is empty'),
-            )
-          : Column(
-              children: [
-                // Cart items
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: widget.cart.length,
+      appBar: AppBar(title: const Text('Cart')),
+      body: Column(
+        children: [
+          const ConnectivityBanner(),
+          Expanded(
+            child: cart.isEmpty
+                ? const Center(child: Text('Your cart is empty'))
+                : ListView.builder(
+                    itemCount: cart.items.length,
                     itemBuilder: (context, index) {
-                      final item = widget.cart[index];
-                      return CartItemCard(
-                        item: item,
-                        onUpdateQuantity: (quantity) {
-                          _updateQuantity(index, quantity);
-                        },
-                      );
-                    },
-                  ),
-                ),
-
-                // Note input
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: TextField(
-                    controller: _noteController,
-                    decoration: const InputDecoration(
-                      hintText: 'Add note (optional)',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 2,
-                  ),
-                ),
-
-                // Order summary
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 4,
-                        offset: const Offset(0, -2),
-                      ),
-                    ],
-                  ),
-                  child: SafeArea(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      final item = cart.items[index];
+                      return ListTile(
+                        title: Text(item.menuItem.name),
+                        subtitle: Text('₹${item.menuItem.price}'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text(
-                              'Total Amount',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            IconButton(
+                              icon: const Icon(Icons.remove),
+                              onPressed: () => context
+                                  .read<CartProvider>()
+                                  .updateQuantity(
+                                      item.menuItem.id, item.quantity - 1),
                             ),
-                            Text(
-                              '₹${_subtotal.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
+                            Text('${item.quantity}'),
+                            IconButton(
+                              icon: const Icon(Icons.add),
+                              onPressed: () => context
+                                  .read<CartProvider>()
+                                  .updateQuantity(
+                                      item.menuItem.id, item.quantity + 1),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _isProcessing ? null : _placeOrder,
-                            child: _isProcessing
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text('Place Order'),
-                          ),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                ),
-              ],
-            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: cart.isEmpty ? null : _buildCheckoutBar(context),
     );
   }
-}
 
-class CartItemCard extends StatelessWidget {
-  final Map<String, dynamic> item;
-  final Function(int) onUpdateQuantity;
-
-  const CartItemCard({
-    super.key,
-    required this.item,
-    required this.onUpdateQuantity,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+  Widget _buildCheckoutBar(BuildContext context) {
+    final cart = context.watch<CartProvider>().cart;
+    return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(8.0),
         child: Row(
           children: [
-            // Item image
-            if (item['imageUrl'] != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  item['imageUrl'],
-                  width: 60,
-                  height: 60,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      Container(
-                        width: 60,
-                        height: 60,
-                        color: Colors.grey[200],
-                        child: const Icon(Icons.image_not_supported),
-                      ),
-                ),
-              ),
-
-            const SizedBox(width: 12),
-
-            // Item details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item['name'],
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '₹${item['price']}',
-                    style: const TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Quantity controls
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.remove),
-                  onPressed: () {
-                    onUpdateQuantity(item['quantity'] - 1);
-                  },
-                ),
-                Text(
-                  item['quantity'].toString(),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: () {
-                    onUpdateQuantity(item['quantity'] + 1);
-                  },
-                ),
-              ],
+            Text('Total: ₹${cart.total}',
+                style: Theme.of(context).textTheme.titleLarge),
+            const Spacer(),
+            ElevatedButton(
+              onPressed: () => _handleCheckout(context),
+              child: const Text('Checkout'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _handleCheckout(BuildContext context) async {
+    final isOnline = context.read<ConnectivityService>().isOnline;
+
+    try {
+      final orderService = OrderService();
+      final paymentService = PaymentService();
+
+      // Create pending order
+      final orderId =
+          await orderService.createOrder(context.read<CartProvider>().cart);
+
+      if (!isOnline) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Order saved offline. Will be processed when online.'),
+          ),
+        );
+        context.read<CartProvider>().clear();
+        return;
+      }
+
+      // Initialize UPI payment
+      final success = await paymentService.initiateUpiPayment(
+        context.read<CartProvider>().cart.total,
+        orderId,
+      );
+
+      if (success) {
+        // Update order status and clear cart
+        await orderService.updateOrderStatus(orderId, 'paid');
+        context.read<CartProvider>().clear();
+
+        if (context.mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => OrderTrackingScreen(orderId: orderId),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 }
